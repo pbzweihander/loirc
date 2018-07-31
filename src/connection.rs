@@ -1,10 +1,10 @@
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{Shutdown, TcpStream};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{self, Sender, Receiver};
 use std::thread;
 
-use encoding::{DecoderTrap, EncodingRef, EncoderTrap};
+use encoding::{DecoderTrap, EncoderTrap, EncodingRef};
 use std::time::Duration;
 
 use message::{Message, ParseError};
@@ -76,7 +76,6 @@ pub struct Writer {
 }
 
 impl Writer {
-
     fn new(stream: TcpStream, encoding: EncodingRef) -> Writer {
         Writer {
             stream: Arc::new(Mutex::new(StreamStatus::Connected(stream))),
@@ -160,7 +159,10 @@ impl Writer {
             }
             StreamStatus::Connected(ref mut stream) => {
                 // Try to write to the stream.
-                let bytes = self.encoding.encode(data.as_ref(), EncoderTrap::Ignore).unwrap();
+                let bytes = self
+                    .encoding
+                    .encode(data.as_ref(), EncoderTrap::Ignore)
+                    .unwrap();
                 if stream.write(&bytes).is_err() {
                     // The write failed, shutdown the connection.
                     let _ = stream.shutdown(Shutdown::Both);
@@ -181,18 +183,15 @@ impl Writer {
             Ok(())
         }
     }
-
 }
 
 impl Into<Event> for Result<Message, ParseError> {
-
     fn into(self) -> Event {
         match self {
             Ok(msg) => Event::Message(msg),
             Err(err) => Event::ParseError(err),
         }
     }
-
 }
 
 /// These settings tell the reconnection process how to behave.
@@ -220,7 +219,7 @@ pub enum ReconnectionSettings {
         delay_between_attempts: Duration,
         /// Wait time after disconnection, before trying to reconnect.
         delay_after_disconnect: Duration,
-    }
+    },
 }
 
 /// Default settings are provided for this enum.
@@ -233,7 +232,6 @@ pub enum ReconnectionSettings {
 ///
 /// `delay_after_disconnect` = 60 seconds
 impl Default for ReconnectionSettings {
-
     fn default() -> ReconnectionSettings {
         ReconnectionSettings::Reconnect {
             max_attempts: 10,
@@ -241,20 +239,23 @@ impl Default for ReconnectionSettings {
             delay_after_disconnect: Duration::from_secs(60),
         }
     }
-
 }
 
 fn reconnect(address: &str, handle: &Writer) -> io::Result<(BufReader<TcpStream>)> {
     let stream = try!(TcpStream::connect(address));
     let reader = BufReader::new(try!(stream.try_clone()));
     handle.set_connected(stream);
-    Ok((reader))
+    Ok(reader)
 }
 
-fn reader_thread(address: String, mut reader: BufReader<TcpStream>,
-                                   event_sender: Sender<Event>, handle: Writer,
-                                   reco_settings: ReconnectionSettings,
-                                   encoding: EncodingRef) {
+fn reader_thread(
+    address: String,
+    mut reader: BufReader<TcpStream>,
+    event_sender: Sender<Event>,
+    handle: Writer,
+    reco_settings: ReconnectionSettings,
+    encoding: EncodingRef,
+) {
     'read: loop {
         let mut buff = Vec::new();
         let res = reader.read_until(b'\n', &mut buff);
@@ -277,18 +278,19 @@ fn reader_thread(address: String, mut reader: BufReader<TcpStream>,
                 }
 
                 // Grab the reconnection settings or break the loop if no reconnection is desired.
-                let (max_attempts, delay_between_attempts, delay_after_disconnect) = match reco_settings {
-                    ReconnectionSettings::DoNotReconnect => {
-                        let _ = handle.close();
-                        let _ = event_sender.send(Event::Closed("do not reconnect"));
-                        break;
-                    }
-                    ReconnectionSettings::Reconnect{ max_attempts,
-                                                     delay_between_attempts,
-                                                     delay_after_disconnect } => {
-                        (max_attempts, delay_between_attempts, delay_after_disconnect)
-                    }
-                };
+                let (max_attempts, delay_between_attempts, delay_after_disconnect) =
+                    match reco_settings {
+                        ReconnectionSettings::DoNotReconnect => {
+                            let _ = handle.close();
+                            let _ = event_sender.send(Event::Closed("do not reconnect"));
+                            break;
+                        }
+                        ReconnectionSettings::Reconnect {
+                            max_attempts,
+                            delay_between_attempts,
+                            delay_after_disconnect,
+                        } => (max_attempts, delay_between_attempts, delay_after_disconnect),
+                    };
 
                 thread::sleep(delay_after_disconnect);
 
@@ -296,7 +298,6 @@ fn reader_thread(address: String, mut reader: BufReader<TcpStream>,
 
                 // Loop until reconnection is successful.
                 'reconnect: loop {
-
                     // If max_attempts is zero, it means an infinite amount of attempts.
                     if max_attempts > 0 {
                         attempts += 1;
@@ -356,7 +357,11 @@ fn reader_thread(address: String, mut reader: BufReader<TcpStream>,
 /// an error is returned.
 ///
 /// If you don't want to reconnect, use `ReconnectionSettings::DoNotReconnect`.
-pub fn connect<A: AsRef<str>>(address: A, reco_settings: ReconnectionSettings, encoding: EncodingRef) -> io::Result<(Writer, Reader)> {
+pub fn connect<A: AsRef<str>>(
+    address: A,
+    reco_settings: ReconnectionSettings,
+    encoding: EncodingRef,
+) -> io::Result<(Writer, Reader)> {
     let stream = try!(TcpStream::connect(address.as_ref()));
     let reader = BufReader::new(try!(stream.try_clone()));
 
@@ -368,7 +373,14 @@ pub fn connect<A: AsRef<str>>(address: A, reco_settings: ReconnectionSettings, e
 
     let address_clone = address.as_ref().into();
     thread::spawn(move || {
-        reader_thread(address_clone, reader, event_sender, reader_handle, reco_settings, encoding);
+        reader_thread(
+            address_clone,
+            reader,
+            event_sender,
+            reader_handle,
+            reco_settings,
+            encoding,
+        );
     });
 
     Ok((writer, event_reader))

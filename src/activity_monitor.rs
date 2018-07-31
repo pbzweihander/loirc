@@ -1,5 +1,5 @@
-use std::thread;
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::thread;
 
 use std::time::{Duration, Instant};
 
@@ -36,7 +36,6 @@ struct State {
 }
 
 impl State {
-
     fn new(ts: Instant) -> State {
         let conn_status = ConnectionStatus::Connected(MonitorStatus::Activity(ts));
         State {
@@ -84,7 +83,6 @@ impl State {
     fn unset_server(&self) {
         *self.server.lock().unwrap() = None;
     }
-
 }
 
 fn periodic_checker(state: State, handle: Writer, settings: MonitorSettings) {
@@ -104,9 +102,11 @@ fn periodic_checker(state: State, handle: Writer, settings: MonitorSettings) {
                         if diff > settings.activity_timeout {
                             // Make sure we have a server name.
                             match *state.get_server() {
-                                Some(ref server) =>  {
+                                Some(ref server) => {
                                     // Set the monitor's status to ping mode.
-                                    *conn_status = ConnectionStatus::Connected(MonitorStatus::Ping(Instant::now()));
+                                    *conn_status = ConnectionStatus::Connected(
+                                        MonitorStatus::Ping(Instant::now()),
+                                    );
                                     // Send a ping, which should trigger activity is the connection is still alive.
                                     let _ = handle.raw(format!("PING {}\n", server));
                                 }
@@ -117,7 +117,6 @@ fn periodic_checker(state: State, handle: Writer, settings: MonitorSettings) {
                                     panic!("Server is None! This scenario is highly unlikely, please report this issue!");
                                 }
                             }
-
                         }
                     }
                     // The monitor is in ping mode, which means it expects a ping response anytime.
@@ -128,11 +127,11 @@ fn periodic_checker(state: State, handle: Writer, settings: MonitorSettings) {
                             // trigger reconnection process
                             let _ = handle.disconnect();
                         }
-                    },
+                    }
                 }
-            },
+            }
             // Do nothing if the socket is disconnected, for now.
-            ConnectionStatus::Disconnected => {},
+            ConnectionStatus::Disconnected => {}
             ConnectionStatus::Quit => break,
         }
 
@@ -169,14 +168,12 @@ pub struct MonitorSettings {
 ///
 /// `ping_timeout` = 15 seconds
 impl Default for MonitorSettings {
-
     fn default() -> MonitorSettings {
         MonitorSettings {
             activity_timeout: Duration::from_secs(60),
             ping_timeout: Duration::from_secs(15),
         }
     }
-
 }
 
 /// This struct monitors a connection's activity.
@@ -194,12 +191,11 @@ pub struct ActivityMonitor {
 }
 
 impl ActivityMonitor {
-
     /// Create a new ActivityMonitor.
     ///
     /// The handle to a Writer allows the monitor to notify the connection of disconnects.
     pub fn new(handle: &Writer, settings: MonitorSettings) -> ActivityMonitor {
-        let state =  State::new(Instant::now());
+        let state = State::new(Instant::now());
 
         let state_clone = state.clone();
         let handle_clone = handle.clone();
@@ -208,9 +204,7 @@ impl ActivityMonitor {
             periodic_checker(state_clone, handle_clone, settings);
         });
 
-        ActivityMonitor {
-            state: state,
-        }
+        ActivityMonitor { state: state }
     }
 
     /// Give an event received from the connection to the monitor.
@@ -246,7 +240,6 @@ impl ActivityMonitor {
             _ => {}
         }
     }
-
 }
 
 /// Drop stops the background thread and clears the monitor's resources.
@@ -254,9 +247,7 @@ impl ActivityMonitor {
 /// If you want the activity monitor to cease its activites, you can simply drop it.
 /// It will not affect the connection on which the activity monitor operates.
 impl Drop for ActivityMonitor {
-
     fn drop(&mut self) {
         self.state.quit();
     }
-
 }

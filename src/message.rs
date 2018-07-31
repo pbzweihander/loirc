@@ -23,7 +23,6 @@ pub struct Message {
 }
 
 impl Message {
-
     /// Parse the given string into a `Message` struct.
     ///
     /// An error is returned if the message is not valid.
@@ -87,12 +86,10 @@ impl Message {
 
         let code = match code {
             None => return Err(ParseError::EmptyCommand),
-            Some(text) => {
-                match text.parse() {
-                    Ok(code) => code,
-                    Err(_) => Code::Unknown(text.into()),
-                }
-            }
+            Some(text) => match text.parse() {
+                Ok(code) => code,
+                Err(_) => Code::Unknown(text.into()),
+            },
         };
 
         Ok(Message {
@@ -142,7 +139,6 @@ pub struct PrefixUser {
 }
 
 impl PrefixUser {
-
     fn new(nick: &str, user: &str, host: &str) -> PrefixUser {
         PrefixUser {
             nickname: nick.into(),
@@ -150,7 +146,6 @@ impl PrefixUser {
             hostname: host.into(),
         }
     }
-
 }
 
 #[test]
@@ -159,7 +154,10 @@ fn test_full() {
     assert!(res.is_ok());
     let msg = res.ok().unwrap();
     assert_eq!(msg.code, Code::Unknown("COMMAND".to_string()));
-    assert_eq!(msg.args, vec!["arg1", "arg2", "arg3", "suffix is pretty cool yo"]);
+    assert_eq!(
+        msg.args,
+        vec!["arg1", "arg2", "arg3", "suffix is pretty cool yo"]
+    );
 }
 
 #[test]
@@ -169,7 +167,10 @@ fn test_no_prefix() {
     let msg = res.ok().unwrap();
     assert_eq!(msg.prefix, None);
     assert_eq!(msg.code, Code::Nick);
-    assert_eq!(msg.args, vec!["arg1", "arg2", "arg3", "suffix is pretty cool yo"]);
+    assert_eq!(
+        msg.args,
+        vec!["arg1", "arg2", "arg3", "suffix is pretty cool yo"]
+    );
 }
 
 #[test]
@@ -245,5 +246,8 @@ fn test_prefix_user() {
     let res = Message::parse(":bob!bob@bob.com COMMAND :suffix is pretty cool yo");
     assert!(res.is_ok());
     let msg = res.ok().unwrap();
-    assert_eq!(msg.prefix, Some(Prefix::User(PrefixUser::new("bob", "bob", "bob.com"))));
+    assert_eq!(
+        msg.prefix,
+        Some(Prefix::User(PrefixUser::new("bob", "bob", "bob.com")))
+    );
 }

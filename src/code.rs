@@ -376,7 +376,6 @@ pub enum Code {
 }
 
 impl Code {
-
     /// Checks if the code is a reply.
     pub fn is_reply(&self) -> bool {
         match *self {
@@ -464,7 +463,7 @@ impl Code {
             Code::RplAdminloc2 => true,
             Code::RplAdminemail => true,
             Code::RplTryagain => true,
-            _  => false,
+            _ => false,
         }
     }
 
@@ -524,14 +523,12 @@ impl Code {
             Code::ErrNooperhost => true,
             Code::ErrUmodeunknownflag => true,
             Code::ErrUsersdontmatch => true,
-            _  => false,
+            _ => false,
         }
     }
-
 }
 
 impl fmt::Display for Code {
-
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let text = match *self {
             Code::Pass => "PASS",
@@ -720,7 +717,6 @@ impl fmt::Display for Code {
         };
         f.write_str(text)
     }
-
 }
 
 impl str::FromStr for Code {

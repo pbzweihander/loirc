@@ -42,6 +42,6 @@ mod connection;
 mod message;
 
 pub use activity_monitor::{ActivityMonitor, MonitorSettings};
-pub use connection::{connect, Event, Error, Reader, ReconnectionSettings, Writer};
 pub use code::Code;
-pub use message::{ParseError, Message, Prefix, PrefixUser};
+pub use connection::{connect, Error, Event, Reader, ReconnectionSettings, Writer};
+pub use message::{Message, ParseError, Prefix, PrefixUser};
