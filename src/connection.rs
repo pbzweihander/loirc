@@ -79,7 +79,7 @@ impl Writer {
     fn new(stream: TcpStream, encoding: EncodingRef) -> Writer {
         Writer {
             stream: Arc::new(Mutex::new(StreamStatus::Connected(stream))),
-            encoding: encoding,
+            encoding,
         }
     }
 

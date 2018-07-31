@@ -60,7 +60,7 @@ impl State {
     }
 
     // Get the connection status.
-    fn connection_status<'a>(&self) -> MutexGuard<ConnectionStatus> {
+    fn connection_status(&self) -> MutexGuard<ConnectionStatus> {
         self.status.lock().unwrap()
     }
 
@@ -204,7 +204,7 @@ impl ActivityMonitor {
             periodic_checker(state_clone, handle_clone, settings);
         });
 
-        ActivityMonitor { state: state }
+        ActivityMonitor { state }
     }
 
     /// Give an event received from the connection to the monitor.

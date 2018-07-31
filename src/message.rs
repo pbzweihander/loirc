@@ -27,7 +27,7 @@ impl Message {
     ///
     /// An error is returned if the message is not valid.
     pub fn parse(line: &str) -> Result<Message, ParseError> {
-        if line.len() == 0 || line.trim().len() == 0 {
+        if line.is_empty() || line.trim().is_empty() {
             return Err(ParseError::EmptyMessage);
         }
 
@@ -37,8 +37,8 @@ impl Message {
         let mut args: Vec<String> = Vec::new();
 
         // Look for a prefix
-        if state.starts_with(":") {
-            match state.find(" ") {
+        if state.starts_with(':') {
+            match state.find(' ') {
                 None => return Err(ParseError::UnexpectedEnd),
                 Some(idx) => {
                     prefix = parse_prefix(&state[1..idx]);
@@ -48,9 +48,9 @@ impl Message {
         }
 
         // Look for the command/reply
-        match state.find(" ") {
+        match state.find(' ') {
             None => {
-                if state.len() == 0 {
+                if state.is_empty() {
                     return Err(ParseError::EmptyMessage);
                 } else {
                     code = Some(&state[..]);
@@ -64,13 +64,13 @@ impl Message {
         }
 
         // Look for arguments and the suffix
-        if state.len() > 0 {
+        if !state.is_empty() {
             loop {
-                if state.starts_with(":") {
+                if state.starts_with(':') {
                     args.push(state[1..].into());
                     break;
                 } else {
-                    match state.find(" ") {
+                    match state.find(' ') {
                         None => {
                             args.push(state[..].into());
                             break;
@@ -92,26 +92,22 @@ impl Message {
             },
         };
 
-        Ok(Message {
-            prefix: prefix,
-            code: code,
-            args: args,
-        })
+        Ok(Message { prefix, code, args })
     }
 }
 
 fn parse_prefix(prefix: &str) -> Option<Prefix> {
-    match prefix.find("!") {
+    match prefix.find('!') {
         None => Some(Prefix::Server(prefix.to_string())),
         Some(excpos) => {
             let nick = &prefix[..excpos];
             let rest = &prefix[excpos + 1..];
-            match rest.find("@") {
-                None => return None,
+            match rest.find('@') {
+                None => None,
                 Some(atpos) => {
                     let user = &rest[..atpos];
                     let host = &rest[atpos + 1..];
-                    return Some(Prefix::User(PrefixUser::new(nick, user, host)));
+                    Some(Prefix::User(PrefixUser::new(nick, user, host)))
                 }
             }
         }
