@@ -35,6 +35,9 @@
 //! ```
 #![deny(missing_docs)]
 extern crate encoding;
+#[macro_use]
+extern crate failure;
+extern crate native_tls;
 
 mod activity_monitor;
 mod code;
@@ -43,5 +46,9 @@ mod message;
 
 pub use activity_monitor::{ActivityMonitor, MonitorSettings};
 pub use code::Code;
-pub use connection::{connect, Error, Event, Reader, ReconnectionSettings, Writer};
+pub use connection::{
+    connect, ConnectionBuilder, ConnectionError, Event, Reader, ReconnectionSettings, Writer,
+};
 pub use message::{Message, ParseError, Prefix, PrefixUser};
+
+pub use failure::Error;
