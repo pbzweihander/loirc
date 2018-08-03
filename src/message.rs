@@ -205,7 +205,7 @@ fn test_only_command() {
 fn test_empty_message() {
     let res = Message::parse("");
     assert!(res.is_err());
-    let err = res.err().unwrap();
+    let err: ParseError = res.err().unwrap().downcast().unwrap();
     assert!(err == ParseError::EmptyMessage);
 }
 
@@ -213,7 +213,7 @@ fn test_empty_message() {
 fn test_empty_message_trim() {
     let res = Message::parse("    ");
     assert!(res.is_err());
-    let err = res.err().unwrap();
+    let err: ParseError = res.err().unwrap().downcast().unwrap();
     assert!(err == ParseError::EmptyMessage);
 }
 
@@ -221,7 +221,7 @@ fn test_empty_message_trim() {
 fn test_only_prefix() {
     let res = Message::parse(":org.prefix.cool");
     assert!(res.is_err());
-    let err = res.err().unwrap();
+    let err: ParseError = res.err().unwrap().downcast().unwrap();
     assert!(err == ParseError::UnexpectedEnd);
 }
 

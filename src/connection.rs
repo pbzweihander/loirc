@@ -377,8 +377,8 @@ impl Default for ReconnectionSettings {
 fn reconnect(setting: &ConnectionBuilder, handle: &mut Writer) -> Result<BufReader<Stream>, Error> {
     let tcp_stream = TcpStream::connect((setting.address.as_ref(), setting.port))?;
     let stream = if setting.use_tls {
-        let connector =
-            ::native_tls::TlsConnector::new().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let connector = ::native_tls::TlsConnector::new()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         let stream = connector
             .connect(&setting.address, tcp_stream)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;

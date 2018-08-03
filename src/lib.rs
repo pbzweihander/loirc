@@ -14,8 +14,8 @@
 //! use loirc::{connect, Code, Event};
 //!
 //! fn main() {
-//!     // connect to freenode and use the default reconnection settings.
-//!     let (writer, reader) = connect("irc.freenode.net:6667", Default::default(), UTF_8).unwrap();
+//!     // connect to freenode with no tls and use the default reconnection settings.
+//!     let (writer, reader) = connect("irc.freenode.net", 6667, Default::default(), UTF_8, false).unwrap();
 //!     writer.raw(format!("USER {} 8 * :{}\n", "username", "realname"));
 //!     writer.raw(format!("NICK {}\n", "nickname"));
 //!     // Block until something happens.
