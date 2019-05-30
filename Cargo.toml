@@ -1,15 +1,24 @@
 [package]
-name = "loirc"
+name = "ploirc"
 version = "0.2.0"
-authors = ["Simon Bernier St-Pierre <sbernierstpierre@gmail.com>"]
+authors = [
+    "Simon Bernier St-Pierre <sbernierstpierre@gmail.com>",
+    "pbzweihander <pbzweihander@gmail.com>",
+]
 description = "Low-level IRC client library with robustness in mind."
-documentation = "http://sbstp.github.io/loirc/loirc/"
+documentation = "https://docs.rs/ploirc/"
 keywords = ["irc", "client"]
-homepage = "https://github.com/SBSTP/loirc"
-repository = "https://github.com/SBSTP/loirc"
+homepage = "https://github.com/pbzweihander/ploirc"
+repository = "https://github.com/pbzweihander/ploirc"
 readme = "README.md"
-license = "Zlib"
-exclude = ["docs.sh"]
+license = "MIT or Apache 2.0"
+edition = "2018"
+build = "build.rs"
+
+[features]
+default = ["std"]
+std = []
 
 [dependencies]
 encoding = "0.2.32"
+failure = "0.1.5"

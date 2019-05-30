@@ -7,15 +7,16 @@
 //! Here's a canonical example.
 //!
 //! ```no_run
-//! extern crate encoding;
-//! extern crate loirc;
-//!
-//! use encoding::all::UTF_8;
-//! use loirc::{connect, Code, Event};
+//! use {
+//!     encoding::all::UTF_8,
+//!     ploirc::{connect, Code, Event},
+//!     std::net::TcpStream,
+//! };
 //!
 //! fn main() {
 //!     // connect to freenode and use the default reconnection settings.
-//!     let (writer, reader) = connect("irc.freenode.net:6667", Default::default(), UTF_8).unwrap();
+//!     let (writer, reader) =
+//!         connect::<TcpStream>("irc.freenode.net:6667", Default::default(), UTF_8).unwrap();
 //!     writer.raw(format!("USER {} 8 * :{}\n", "username", "realname"));
 //!     writer.raw(format!("NICK {}\n", "nickname"));
 //!     // Block until something happens.
@@ -34,14 +35,16 @@
 //! }
 //! ```
 #![deny(missing_docs)]
-extern crate encoding;
 
 mod activity_monitor;
 mod code;
 mod connection;
 mod message;
+mod stream;
 
-pub use activity_monitor::{ActivityMonitor, MonitorSettings};
-pub use connection::{connect, Event, Error, Reader, ReconnectionSettings, Writer};
-pub use code::Code;
-pub use message::{ParseError, Message, Prefix, PrefixUser};
+pub use {
+    activity_monitor::{ActivityMonitor, MonitorSettings},
+    code::Code,
+    connection::{connect, Error, Event, Reader, ReconnectionSettings, Writer},
+    message::{Message, ParseError, Prefix, PrefixUser},
+};

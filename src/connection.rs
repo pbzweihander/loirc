@@ -1,13 +1,19 @@
-use std::io::{self, BufRead, BufReader, Write};
-use std::net::{Shutdown, TcpStream};
-use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{self, Sender, Receiver};
-use std::thread;
-
-use encoding::{DecoderTrap, EncodingRef, EncoderTrap};
-use std::time::Duration;
-
-use message::{Message, ParseError};
+use {
+    crate::{
+        message::{Message, ParseError},
+        stream::Stream,
+    },
+    encoding::{DecoderTrap, EncoderTrap, EncodingRef},
+    failure::Fail,
+    std::{
+        io::{BufRead, BufReader},
+        net::Shutdown,
+        sync::mpsc::{self, Receiver, Sender},
+        sync::{Arc, Mutex},
+        thread,
+        time::Duration,
+    },
+};
 
 /// This is the comprehensive set of events that can occur.
 #[derive(Debug)]
@@ -31,7 +37,7 @@ pub enum Event {
     ///
     /// This is normal in poor network conditions. It might take
     /// a few attempts before the connection can be restored.
-    ReconnectionError(io::Error),
+    ReconnectionError(Box<dyn std::error::Error + Send>),
 }
 
 /// This the receiving end of a `mpsc` channel.
@@ -41,25 +47,29 @@ pub enum Event {
 pub type Reader = Receiver<Event>;
 
 /// Errors produced by the Writer.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Fail)]
 pub enum Error {
     /// Connection is already closed.
+    #[fail(display = "Conection is already closed")]
     AlreadyClosed,
     /// Connection is already disconnected.
+    #[fail(display = "Connection is already disconnected")]
     AlreadyDisconnected,
     /// Connection was manually closed.
+    #[fail(display = "Connection was manually closed")]
     Closed,
     /// Connection was dropped.
     ///
     /// A reconnection might be in process.
+    #[fail(display = "Connection was dropped")]
     Disconnected,
 }
 
-enum StreamStatus {
+enum StreamStatus<S> {
     // The stream was closed manually.
     Closed,
     // The stream is connected.
-    Connected(TcpStream),
+    Connected(S),
     // The stream is disconnected, an attempt to reconnect will be made.
     Disconnected,
 }
@@ -69,29 +79,48 @@ enum StreamStatus {
 /// This object is thread safe. You can clone it and send the clones to other
 /// threads. You can write from multiple threads without any issue. Internally,
 /// it uses `Arc` and `Mutex`.
-#[derive(Clone)]
-pub struct Writer {
-    stream: Arc<Mutex<StreamStatus>>,
+pub struct Writer<S> {
+    stream: Arc<Mutex<StreamStatus<S>>>,
     encoding: EncodingRef,
 }
 
-impl Writer {
+impl<S> Clone for Writer<S> {
+    fn clone(&self) -> Self {
+        Writer {
+            stream: self.stream.clone(),
+            encoding: self.encoding,
+        }
+    }
+}
 
-    fn new(stream: TcpStream, encoding: EncodingRef) -> Writer {
+impl<S> Writer<S> {
+    fn new(stream: S, encoding: EncodingRef) -> Writer<S> {
         Writer {
             stream: Arc::new(Mutex::new(StreamStatus::Connected(stream))),
-            encoding: encoding,
+            encoding,
         }
     }
 
-    fn set_connected(&self, stream: TcpStream) {
+    fn set_connected(&self, stream: S) {
         *self.stream.lock().unwrap() = StreamStatus::Connected(stream);
     }
-
     fn set_disconnected(&self) {
         *self.stream.lock().unwrap() = StreamStatus::Disconnected;
     }
 
+    /// Check if the connection was manually closed.
+    pub fn is_closed(&self) -> bool {
+        match *self.stream.lock().unwrap() {
+            StreamStatus::Closed => true,
+            _ => false,
+        }
+    }
+}
+
+impl<S> Writer<S>
+where
+    S: Stream,
+{
     /// Drop the connection and trigger the reconnection process.
     ///
     /// There might be a reconnection attempt, based on your settings.
@@ -115,14 +144,6 @@ impl Writer {
 
         *status = StreamStatus::Disconnected;
         Ok(())
-    }
-
-    /// Check if the connection was manually closed.
-    pub fn is_closed(&self) -> bool {
-        match *self.stream.lock().unwrap() {
-            StreamStatus::Closed => true,
-            _ => false,
-        }
     }
 
     /// Close the connection and stop listening for messages.
@@ -150,7 +171,7 @@ impl Writer {
     ///
     /// A new line will be not be added, so make sure that you include it.
     /// An error will be returned if the client is disconnected.
-    pub fn raw<S: AsRef<str>>(&self, data: S) -> Result<(), Error> {
+    pub fn raw<A: AsRef<str>>(&self, data: A) -> Result<(), Error> {
         let mut status = self.stream.lock().unwrap();
         let mut failed = false;
 
@@ -160,7 +181,10 @@ impl Writer {
             }
             StreamStatus::Connected(ref mut stream) => {
                 // Try to write to the stream.
-                let bytes = self.encoding.encode(data.as_ref(), EncoderTrap::Ignore).unwrap();
+                let bytes = self
+                    .encoding
+                    .encode(data.as_ref(), EncoderTrap::Ignore)
+                    .unwrap();
                 if stream.write(&bytes).is_err() {
                     // The write failed, shutdown the connection.
                     let _ = stream.shutdown(Shutdown::Both);
@@ -181,18 +205,15 @@ impl Writer {
             Ok(())
         }
     }
-
 }
 
 impl Into<Event> for Result<Message, ParseError> {
-
     fn into(self) -> Event {
         match self {
             Ok(msg) => Event::Message(msg),
             Err(err) => Event::ParseError(err),
         }
     }
-
 }
 
 /// These settings tell the reconnection process how to behave.
@@ -220,7 +241,7 @@ pub enum ReconnectionSettings {
         delay_between_attempts: Duration,
         /// Wait time after disconnection, before trying to reconnect.
         delay_after_disconnect: Duration,
-    }
+    },
 }
 
 /// Default settings are provided for this enum.
@@ -233,7 +254,6 @@ pub enum ReconnectionSettings {
 ///
 /// `delay_after_disconnect` = 60 seconds
 impl Default for ReconnectionSettings {
-
     fn default() -> ReconnectionSettings {
         ReconnectionSettings::Reconnect {
             max_attempts: 10,
@@ -241,20 +261,23 @@ impl Default for ReconnectionSettings {
             delay_after_disconnect: Duration::from_secs(60),
         }
     }
-
 }
 
-fn reconnect(address: &str, handle: &Writer) -> io::Result<(BufReader<TcpStream>)> {
-    let stream = try!(TcpStream::connect(address));
-    let reader = BufReader::new(try!(stream.try_clone()));
+fn reconnect<S: Stream>(address: &str, handle: &Writer<S>) -> Result<BufReader<S>, S::Error> {
+    let stream = S::connect(address)?;
+    let reader = BufReader::new(stream.try_clone()?);
     handle.set_connected(stream);
-    Ok((reader))
+    Ok(reader)
 }
 
-fn reader_thread(address: String, mut reader: BufReader<TcpStream>,
-                                   event_sender: Sender<Event>, handle: Writer,
-                                   reco_settings: ReconnectionSettings,
-                                   encoding: EncodingRef) {
+fn reader_thread<S: Stream>(
+    address: String,
+    mut reader: BufReader<S>,
+    event_sender: Sender<Event>,
+    handle: Writer<S>,
+    reco_settings: ReconnectionSettings,
+    encoding: EncodingRef,
+) {
     'read: loop {
         let mut buff = Vec::new();
         let res = reader.read_until(b'\n', &mut buff);
@@ -277,18 +300,19 @@ fn reader_thread(address: String, mut reader: BufReader<TcpStream>,
                 }
 
                 // Grab the reconnection settings or break the loop if no reconnection is desired.
-                let (max_attempts, delay_between_attempts, delay_after_disconnect) = match reco_settings {
-                    ReconnectionSettings::DoNotReconnect => {
-                        let _ = handle.close();
-                        let _ = event_sender.send(Event::Closed("do not reconnect"));
-                        break;
-                    }
-                    ReconnectionSettings::Reconnect{ max_attempts,
-                                                     delay_between_attempts,
-                                                     delay_after_disconnect } => {
-                        (max_attempts, delay_between_attempts, delay_after_disconnect)
-                    }
-                };
+                let (max_attempts, delay_between_attempts, delay_after_disconnect) =
+                    match reco_settings {
+                        ReconnectionSettings::DoNotReconnect => {
+                            let _ = handle.close();
+                            let _ = event_sender.send(Event::Closed("do not reconnect"));
+                            break;
+                        }
+                        ReconnectionSettings::Reconnect {
+                            max_attempts,
+                            delay_between_attempts,
+                            delay_after_disconnect,
+                        } => (max_attempts, delay_between_attempts, delay_after_disconnect),
+                    };
 
                 thread::sleep(delay_after_disconnect);
 
@@ -296,7 +320,6 @@ fn reader_thread(address: String, mut reader: BufReader<TcpStream>,
 
                 // Loop until reconnection is successful.
                 'reconnect: loop {
-
                     // If max_attempts is zero, it means an infinite amount of attempts.
                     if max_attempts > 0 {
                         attempts += 1;
@@ -324,7 +347,10 @@ fn reader_thread(address: String, mut reader: BufReader<TcpStream>,
                         }
                         // Error, send event.
                         Err(err) => {
-                            if event_sender.send(Event::ReconnectionError(err)).is_err() {
+                            if event_sender
+                                .send(Event::ReconnectionError(Box::new(err)))
+                                .is_err()
+                            {
                                 break 'read;
                             }
                         }
@@ -356,9 +382,16 @@ fn reader_thread(address: String, mut reader: BufReader<TcpStream>,
 /// an error is returned.
 ///
 /// If you don't want to reconnect, use `ReconnectionSettings::DoNotReconnect`.
-pub fn connect<A: AsRef<str>>(address: A, reco_settings: ReconnectionSettings, encoding: EncodingRef) -> io::Result<(Writer, Reader)> {
-    let stream = try!(TcpStream::connect(address.as_ref()));
-    let reader = BufReader::new(try!(stream.try_clone()));
+pub fn connect<S>(
+    address: &str,
+    reco_settings: ReconnectionSettings,
+    encoding: EncodingRef,
+) -> Result<(Writer<S>, Reader), S::Error>
+where
+    S: Stream + 'static,
+{
+    let stream = S::connect(address)?;
+    let reader = BufReader::new(stream.try_clone()?);
 
     let (event_sender, event_reader) = mpsc::channel::<Event>();
 
@@ -366,9 +399,16 @@ pub fn connect<A: AsRef<str>>(address: A, reco_settings: ReconnectionSettings, e
     // The reader thread needs a handle to modify the status.
     let reader_handle = writer.clone();
 
-    let address_clone = address.as_ref().into();
+    let address_clone = address.to_string();
     thread::spawn(move || {
-        reader_thread(address_clone, reader, event_sender, reader_handle, reco_settings, encoding);
+        reader_thread(
+            address_clone,
+            reader,
+            event_sender,
+            reader_handle,
+            reco_settings,
+            encoding,
+        );
     });
 
     Ok((writer, event_reader))
